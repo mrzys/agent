@@ -19,7 +19,7 @@ def web_fetcher_v2(
         description="Request timeout in seconds (default: 30)",
     ),
     max_length: Optional[int] = Field(
-        default=10000,
+        default=50000,
         description="Maximum length of content to return (default: 10000 characters)",
     ),
 ):
