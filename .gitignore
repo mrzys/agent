@@ -1,0 +1,7 @@
+.sessions/
+.ruff_cache/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.log
