@@ -18,7 +18,7 @@ class Session:
         atexit.register(self.storage.close)
 
     def add_message(self, role: Role, content: str, **kwargs):
-        timestamp = kwargs.get("timestamp", int(time()))
+        timestamp = kwargs.pop("timestamp", int(time()))
         message = Message(role=role, content=content, timestamp=timestamp, **kwargs)
         self.message.append(message)
         self.storage.save(message)

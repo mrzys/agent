@@ -1,23 +1,12 @@
-from enum import Enum
-import json
-from time import time
-from typing import Any, Dict, List, Union
 import uuid
 import logging
-
-from litellm import completion
-from litellm.types.utils import ChatCompletionDeltaToolCall
+from typing import List
 
 from src.session import Session
 from src.message import Role
 from src.tool import Tool
-
-logging.basicConfig(level=logging.INFO)
-
-
-class Mode(str, Enum):
-    PLAN = "plan"
-    EXECUTE = "execute"
+from src.llm_client import LLMClient, ToolCall
+from src.tool_executor import ToolExecutor
 
 
 class Agent:
@@ -30,163 +19,64 @@ class Agent:
         tools: List[Tool] = None,
         max_think_iterations: int = 100,
     ):
+        self.name = name
         self._logger = logging.getLogger(self.__class__.__name__)
-        self.model = model
-        if session_id is None:
-            self.session_id = str(uuid.uuid4())
-        else:
-            self.session_id = session_id
+
+        self.session_id = session_id or str(uuid.uuid4())
         self._logger.info(f"Initializing agent with session_id: {self.session_id}")
+
         self.session = Session(session_id=self.session_id)
         if session_id is None:
             self.session.add_message(Role.SYSTEM, system_prompt)
 
-        self.tools = {tool.name: tool for tool in tools} if tools else {}
-        self.tools_schema = [tool.to_openai_format() for tool in self.tools.values()]
-        self.max_think_iterations = max_think_iterations
-        self._mode = Mode.PLAN
+        self._tool_executor = ToolExecutor(tools)
+        self._llm_client = LLMClient(model, self._tool_executor.get_schema())
+        self._max_think_iterations = max_think_iterations
 
     def chat(self, user_input: str) -> str:
-        """Process user input and handle tool calls if needed."""
-        self.session.add_message(role=Role.USER, content=user_input)
+        self.session.add_message(Role.USER, user_input)
+        return self._think()
+
+    def think(self) -> str:
+        return self._think()
+
+    def _think(self, iteration: int = 0) -> str:
         messages = self.session.to_openai_format()
-        return self._process_streaming_response(messages, with_tools=True)
+        response = self._llm_client.stream(messages)
 
-    def think(self, think_count: int = 0) -> str:
-        """Continue conversation without new user input."""
-        messages = self.session.to_openai_format()
-        self._logger.info(f"{self.model} thinking...")
-        response = self._process_streaming_response(
-            messages, with_tools=True, think_count=think_count
-        )
-        self._logger.info(f"{self.model} thinks completedly")
-        return response
-
-    def _process_streaming_response(
-        self, messages: List[Dict[str, Any]], with_tools: bool, think_count: int = 0
-    ) -> str:
-        """
-        Process streaming response and handle tool calls.
-
-        Args:
-            messages: Messages in OpenAI format
-            with_tools: Whether to enable tool calling
-            think_count: Current think iteration count
-
-        Returns:
-            The final response text
-        """
-        response = completion(
-            model=self.model,
-            messages=messages,
-            stream=True,
-            tools=self.tools_schema if with_tools and self.tools else None,
-        )
-
-        timestamp = response.created if response.created is not None else int(time())
-        full_response = ""
-        tool_calls_buffer = {}
-
-        for chunk in response:
-            delta = chunk.choices[0].delta
-            full_response += delta.content or ""
-
-            if delta.tool_calls:
-                self._collect_tool_calls(tool_calls_buffer, delta.tool_calls)
-
-        # Build and add assistant message
-        tool_calls = self._build_tool_calls(tool_calls_buffer)
         self.session.add_message(
             role=Role.ASSISTANT,
-            content=full_response if full_response else "",
-            timestamp=timestamp,
-            tool_calls=tool_calls if tool_calls else None,
+            content=response.content,
+            timestamp=response.created,
+            tool_calls=[tc.to_dict() for tc in response.tool_calls]
+            if response.tool_calls
+            else None,
         )
 
-        # Handle tool calls if any
-        if tool_calls:
-            tool_results = self._execute_tool_calls(tool_calls)
-            if think_count >= self.max_think_iterations:
-                self._logger.warning(
-                    f"Reached max think iterations ({self.max_think_iterations})"
-                )
-                return (
-                    full_response
-                    + f"\n[Warning: Reached maximum think iterations limit ({self.max_think_iterations})]"
-                )
-            if tool_results:
-                return self.think(think_count + 1)
+        if response.tool_calls:
+            return self._handle_tool_calls(response.tool_calls, iteration)
 
-        return full_response
+        return response.content
 
-    def _collect_tool_calls(
-        self,
-        tool_calls_buffer: Dict[str, Any],
-        tool_calls: List[Union[ChatCompletionDeltaToolCall, Any]],
-    ):
-        """Collect tool calls from streaming chunks into buffer."""
-        for tc_delta in tool_calls:
-            idx = tc_delta.index
-            if idx not in tool_calls_buffer:
-                tool_calls_buffer[idx] = {
-                    "id": tc_delta.id,
-                    "name": "",
-                    "arguments": "",
-                    "tool_call_id": tc_delta.id,
-                }
-            if tc_delta.function.name:
-                tool_calls_buffer[idx]["name"] += tc_delta.function.name
-            if tc_delta.function.arguments:
-                tool_calls_buffer[idx]["arguments"] += tc_delta.function.arguments
+    def _handle_tool_calls(self, tool_calls: List[ToolCall], iteration: int) -> str:
+        results = self._tool_executor.execute_batch(tool_calls)
 
-    def _build_tool_calls(
-        self, tool_calls_buffer: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Build final tool calls list from buffer."""
-        tool_calls = []
-        for idx in sorted(tool_calls_buffer.keys()):
-            tc = tool_calls_buffer[idx]
-            tool_calls.append(
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                }
+        for result in results:
+            content = result.error or str(result.result)
+            self.session.add_message(
+                Role.TOOL,
+                content,
+                name=result.tool_name,
+                tool_call_id=result.tool_call_id,
             )
-        return tool_calls
 
-    def _execute_tool_calls(
-        self, tool_calls: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Execute tool calls and add results to session."""
-        results = []
-        for tc in tool_calls:
-            tool_name = tc["function"]["name"]
-            tool_args_str = tc["function"]["arguments"]
+        if iteration >= self._max_think_iterations:
+            self._logger.warning(
+                f"Reached max think iterations ({self._max_think_iterations})"
+            )
+            return f"[Warning: Reached max iterations ({self._max_think_iterations})]"
 
-            try:
-                tool_args = json.loads(tool_args_str)
-            except json.JSONDecodeError:
-                tool_args = {}
-
-            if tool_name in self.tools:
-                tool = self.tools[tool_name]
-                tool_result = tool.execute(**tool_args)
-
-                self.session.add_message(
-                    Role.TOOL,
-                    str(tool_result),
-                    name=tool_name,
-                    tool_call_id=tc["id"],
-                )
-                results.append({"tool_call_id": tc["id"], "result": tool_result})
-            else:
-                self._logger.error(f"Tool '{tool_name}' not found.")
-
-        return results
-
-    def _build_prompt(self, prompt_templete: str, **kwargs) -> str:
-        return prompt_templete.format(**kwargs)
+        return self._think(iteration + 1)
 
 
 if __name__ == "__main__":
@@ -194,6 +84,8 @@ if __name__ == "__main__":
     from src.tool.get_weather import get_weather
     from src.tool.web_search import web_search
     from src.tool.web_fetcher_v2 import web_fetcher_v2
+
+    logging.basicConfig(level=logging.INFO)
 
     agent = Agent(
         name="news-assistant",
@@ -237,5 +129,5 @@ Action: 你决定要调用的tool，或者下一步要执行的动作
         tools=[get_weather, get_current_date, web_fetcher_v2, web_search],
         max_think_iterations=10,
     )
-    resp = agent.think(think_count=10)
+    resp = agent.think()
     print(resp)
