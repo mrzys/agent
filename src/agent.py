@@ -1,4 +1,3 @@
-import uuid
 import logging
 from typing import List
 
@@ -22,16 +21,21 @@ class Agent:
         self.name = name
         self._logger = logging.getLogger(self.__class__.__name__)
 
-        self.session_id = session_id or str(uuid.uuid4())
-        self._logger.info(f"Initializing agent with session_id: {self.session_id}")
+        self.session = Session(session_id=session_id)
+        self._logger.info(
+            f"Initializing agent with session_id: {self.session.session_id}"
+        )
 
-        self.session = Session(session_id=self.session_id)
         if session_id is None:
             self.session.add_message(Role.SYSTEM, system_prompt)
 
         self._tool_executor = ToolExecutor(tools)
         self._llm_client = LLMClient(model, self._tool_executor.get_schema())
         self._max_think_iterations = max_think_iterations
+
+    @property
+    def session_id(self) -> str:
+        return self.session.session_id
 
     def chat(self, user_input: str) -> str:
         self.session.add_message(Role.USER, user_input)
