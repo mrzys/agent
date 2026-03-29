@@ -26,7 +26,7 @@ class Agent:
             f"Initializing agent with session_id: {self.session.session_id}"
         )
 
-        if session_id is None:
+        if len(self.session.message) == 0:
             self.session.add_message(Role.SYSTEM, system_prompt)
 
         self._tool_executor = ToolExecutor(tools)
@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     agent = Agent(
         name="news-assistant",
-        model="deepseek/deepseek-chat",
+        model="dashscope/qwen3-max-2026-01-23",
         system_prompt="""
 你是一个新闻助手。
 
@@ -129,9 +129,8 @@ Action: 你决定要调用的tool，或者下一步要执行的动作
 
 
 """,
-        session_id="bb914239-57ac-4afd-a4d1-148c86b427a2",
         tools=[get_weather, get_current_date, web_fetcher_v2, web_search],
         max_think_iterations=10,
     )
-    resp = agent.think()
+    resp = agent.chat("请开始收集今天的新闻")
     print(resp)
