@@ -77,5 +77,103 @@ class TestLLMClient(unittest.TestCase):
         self.assertEqual(client.tools_schema, [])
 
 
+class MockToolCallDelta:
+    def __init__(self, index, id=None, name=None, arguments=None):
+        self.index = index
+        self.id = id
+        self.function = MockFunction(name, arguments)
+
+
+class MockFunction:
+    def __init__(self, name=None, arguments=None):
+        self.name = name
+        self.arguments = arguments
+
+
+class TestLLMClientToolCallCollection(unittest.TestCase):
+    def test_collect_single_tool_call(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {}
+        deltas = [
+            MockToolCallDelta(
+                index=0, id="call-123", name="get_weather", arguments='{"loc'
+            )
+        ]
+
+        client._collect_tool_calls(buffer, deltas)
+
+        self.assertEqual(buffer[0]["id"], "call-123")
+        self.assertEqual(buffer[0]["name"], "get_weather")
+        self.assertEqual(buffer[0]["arguments"], '{"loc')
+
+    def test_collect_multiple_tool_calls(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {}
+        deltas = [
+            MockToolCallDelta(index=0, id="call-1", name="func_a", arguments="{}"),
+            MockToolCallDelta(index=1, id="call-2", name="func_b", arguments='{"x":1}'),
+        ]
+
+        client._collect_tool_calls(buffer, deltas)
+
+        self.assertEqual(len(buffer), 2)
+        self.assertEqual(buffer[0]["name"], "func_a")
+        self.assertEqual(buffer[1]["name"], "func_b")
+
+    def test_accumulate_arguments_across_chunks(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {}
+
+        deltas1 = [
+            MockToolCallDelta(index=0, id="call-abc", name="get_", arguments='{"ci')
+        ]
+        deltas2 = [MockToolCallDelta(index=0, name="weather", arguments='ty": "Bos')]
+        deltas3 = [MockToolCallDelta(index=0, arguments='ton"}')]
+
+        client._collect_tool_calls(buffer, deltas1)
+        client._collect_tool_calls(buffer, deltas2)
+        client._collect_tool_calls(buffer, deltas3)
+
+        self.assertEqual(buffer[0]["id"], "call-abc")
+        self.assertEqual(buffer[0]["name"], "get_weather")
+        self.assertEqual(buffer[0]["arguments"], '{"city": "Boston"}')
+
+    def test_build_tool_calls_from_buffer(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {
+            0: {"id": "call-1", "name": "search", "arguments": '{"query": "test"}'}
+        }
+
+        result = client._build_tool_calls(buffer)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].id, "call-1")
+        self.assertEqual(result[0].name, "search")
+        self.assertEqual(result[0].arguments, '{"query": "test"}')
+
+    def test_build_tool_calls_sorted_by_index(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {
+            2: {"id": "call-3", "name": "third", "arguments": "{}"},
+            0: {"id": "call-1", "name": "first", "arguments": "{}"},
+            1: {"id": "call-2", "name": "second", "arguments": "{}"},
+        }
+
+        result = client._build_tool_calls(buffer)
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0].name, "first")
+        self.assertEqual(result[1].name, "second")
+        self.assertEqual(result[2].name, "third")
+
+    def test_build_tool_calls_empty_buffer(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {}
+
+        result = client._build_tool_calls(buffer)
+
+        self.assertEqual(result, [])
+
+
 if __name__ == "__main__":
     unittest.main()
