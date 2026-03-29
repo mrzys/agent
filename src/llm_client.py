@@ -63,12 +63,16 @@ class LLMClient:
             tools=self.tools_schema if with_tools and self.tools_schema else None,
         )
 
-        created = response.created or int(time())
+        created = response.created if response.created is not None else int(time())
         content = ""
         tool_calls_buffer: Dict[int, Dict[str, str]] = {}
 
         for chunk in response:
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta
+            if not delta:
+                continue
             content += delta.content or ""
             if delta.tool_calls:
                 self._collect_tool_calls(tool_calls_buffer, delta.tool_calls)
