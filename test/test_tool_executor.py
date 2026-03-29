@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from tool_executor import ToolResult, ToolExecutor
 from tool import Tool
 from pydantic import BaseModel, Field
+from llm_client import ToolCall
 
 
 class DummyParams(BaseModel):
@@ -112,6 +113,85 @@ class TestToolExecutor(unittest.TestCase):
         self.assertEqual(len(executor._tools), 2)
         self.assertIn("tool1", executor._tools)
         self.assertIn("tool2", executor._tools)
+
+    def test_get_schema_empty(self):
+        executor = ToolExecutor()
+
+        schema = executor.get_schema()
+
+        self.assertEqual(schema, [])
+
+    def test_get_schema_with_tools(self):
+        tool1 = Tool(
+            name="tool1",
+            description="First tool",
+            parameters=DummyParams,
+            func=dummy_function,
+        )
+        tool2 = Tool(
+            name="tool2",
+            description="Second tool",
+            parameters=DummyParams,
+            func=dummy_function,
+        )
+
+        executor = ToolExecutor(tools=[tool1, tool2])
+        schema = executor.get_schema()
+
+        self.assertEqual(len(schema), 2)
+        schema_names = [s["function"]["name"] for s in schema]
+        self.assertIn("tool1", schema_names)
+        self.assertIn("tool2", schema_names)
+
+    def test_execute_success(self):
+        tool = Tool(
+            name="test_tool",
+            description="A test tool",
+            parameters=DummyParams,
+            func=dummy_function,
+        )
+
+        executor = ToolExecutor(tools=[tool])
+        result = executor.execute("call_123", "test_tool", '{"value": "hello"}')
+
+        self.assertEqual(result.tool_call_id, "call_123")
+        self.assertEqual(result.tool_name, "test_tool")
+        self.assertTrue(result.success)
+        self.assertEqual(result.result, "Processed: hello")
+        self.assertIsNone(result.error)
+
+    def test_execute_tool_not_found(self):
+        executor = ToolExecutor()
+        result = executor.execute("call_123", "unknown_tool", "{}")
+
+        self.assertEqual(result.tool_call_id, "call_123")
+        self.assertEqual(result.tool_name, "unknown_tool")
+        self.assertFalse(result.success)
+        self.assertIsNone(result.result)
+        self.assertEqual(result.error, "Tool 'unknown_tool' not found")
+
+    def test_execute_invalid_json(self):
+        tool = Tool(
+            name="test_tool",
+            description="A test tool",
+            parameters=DummyParams,
+            func=dummy_function,
+        )
+
+        executor = ToolExecutor(tools=[tool])
+        result = executor.execute("call_123", "test_tool", "not valid json")
+
+        self.assertEqual(result.tool_call_id, "call_123")
+        self.assertEqual(result.tool_name, "test_tool")
+        self.assertFalse(result.success)
+        self.assertIsNone(result.result)
+        self.assertIn("Invalid JSON arguments", result.error)
+
+    def test_execute_batch_empty(self):
+        executor = ToolExecutor()
+        results = executor.execute_batch([])
+
+        self.assertEqual(results, [])
 
 
 if __name__ == "__main__":
