@@ -242,28 +242,29 @@ class TestLLMClientStream(unittest.TestCase):
 
         self.assertEqual(result.content, "Hello world!")
 
+    def test_stream_with_tool_calls(self):
+        client = LLMClient(model="gpt-4")
+        messages = [{"role": "user", "content": "What's the weather?"}]
 
-def test_stream_with_tool_calls(self):
-    client = LLMClient(model="gpt-4")
-    messages = [{"role": "user", "content": "What's the weather?"}]
+        mock_tool_call_delta = MockToolCallDelta(
+            index=0, id="call-123", name="get_weather", arguments='{"city": "Boston"}'
+        )
+        chunks = [
+            MockChunk(MockDelta(content="Let me check ")),
+            MockChunk(
+                MockDelta(content="the weather.", tool_calls=[mock_tool_call_delta])
+            ),
+        ]
+        mock_response = MockStreamResponse(chunks, created=1111111111)
 
-    mock_tool_call_delta = MockToolCallDelta(
-        index=0, id="call-123", name="get_weather", arguments='{"city": "Boston"}'
-    )
-    chunks = [
-        MockChunk(MockDelta(content="Let me check ")),
-        MockChunk(MockDelta(content="the weather.", tool_calls=[mock_tool_call_delta])),
-    ]
-    mock_response = MockStreamResponse(chunks, created=1111111111)
+        with mock.patch("llm_client.completion", return_value=mock_response):
+            result = client.stream(messages)
 
-    with mock.patch("llm_client.completion", return_value=mock_response):
-        result = client.stream(messages)
-
-    self.assertEqual(result.content, "Let me check the weather.")
-    self.assertEqual(len(result.tool_calls), 1)
-    self.assertEqual(result.tool_calls[0].id, "call-123")
-    self.assertEqual(result.tool_calls[0].name, "get_weather")
-    self.assertEqual(result.tool_calls[0].arguments, '{"city": "Boston"}')
+        self.assertEqual(result.content, "Let me check the weather.")
+        self.assertEqual(len(result.tool_calls), 1)
+        self.assertEqual(result.tool_calls[0].id, "call-123")
+        self.assertEqual(result.tool_calls[0].name, "get_weather")
+        self.assertEqual(result.tool_calls[0].arguments, '{"city": "Boston"}')
 
 
 if __name__ == "__main__":
