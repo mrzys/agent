@@ -47,6 +47,15 @@ All notable changes to this project will be documented in this file.
 - Added type hints for `deltas` parameter in `_collect_tool_calls()`
 - Fixed `test_storage.py` to include required `timestamp` field in Message creation
 - Fixed import in `test_storage.py` to use correct `ToolCall` from `message` module
+- Fixed import paths in `tool_executor.py` to use absolute imports (`src.tool`, `src.llm_client`)
+- Fixed session initialization to add system prompt when session is empty (not just for new sessions)
+- Added detailed logging for tool execution errors with input arguments and exception details
+
+### Refactored
+
+- Moved `src/tool.py` to `src/tool/__init__.py` for better package structure
+- Updated default port in `main.py` from 5000 to 5001
+- Updated default model from `dashscope/qwen3-max` to `deepseek/deepseek-chat`
 
 ### Documentation
 
