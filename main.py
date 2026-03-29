@@ -836,6 +836,6 @@ if __name__ == "__main__":
     print("Chat Session Viewer")
     print("=" * 60)
     print(f"Sessions directory: {SESSIONS_DIR.absolute()}")
-    print("Open http://127.0.0.1:5000 in your browser")
+    print("Open http://127.0.0.1:5001 in your browser")
     print("=" * 60)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5001)

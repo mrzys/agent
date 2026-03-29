@@ -93,7 +93,8 @@ if __name__ == "__main__":
 
     agent = Agent(
         name="news-assistant",
-        model="dashscope/qwen3-max-2026-01-23",
+        # model="dashscope/qwen3-max-2026-01-23",
+        model='deepseek/deepseek-chat',
         system_prompt="""
 你是一个新闻助手。
 
