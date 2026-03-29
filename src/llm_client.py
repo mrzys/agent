@@ -29,15 +29,15 @@ class LLMClient:
         self.tools_schema = tools_schema if tools_schema else []
 
     def _collect_tool_calls(
-        self, buffer: Dict[int, Dict[str, str]], deltas: List
+        self, buffer: Dict[int, Dict[str, str]], deltas: List[Any]
     ) -> None:
         for tc_delta in deltas:
             idx = tc_delta.index
             if idx not in buffer:
                 buffer[idx] = {"id": tc_delta.id, "name": "", "arguments": ""}
-            if tc_delta.function.name:
+            if tc_delta.function and tc_delta.function.name:
                 buffer[idx]["name"] += tc_delta.function.name
-            if tc_delta.function.arguments:
+            if tc_delta.function and tc_delta.function.arguments:
                 buffer[idx]["arguments"] += tc_delta.function.arguments
 
     def _build_tool_calls(self, buffer: Dict[int, Dict[str, str]]) -> List[ToolCall]:

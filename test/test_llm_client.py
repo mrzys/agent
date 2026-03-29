@@ -174,6 +174,15 @@ class TestLLMClientToolCallCollection(unittest.TestCase):
 
         self.assertEqual(result, [])
 
+    def test_collect_tool_calls_empty_deltas(self):
+        client = LLMClient(model="gpt-4")
+        buffer = {}
+        deltas = []
+
+        client._collect_tool_calls(buffer, deltas)
+
+        self.assertEqual(buffer, {})
+
 
 if __name__ == "__main__":
     unittest.main()
