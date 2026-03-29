@@ -83,7 +83,7 @@ class Agent:
             tools=self.tools_schema if with_tools and self.tools else None,
         )
 
-        timestap = response.created or int(time())
+        timestamp = response.created if response.created is not None else int(time())
         full_response = ""
         tool_calls_buffer = {}
 
@@ -99,7 +99,7 @@ class Agent:
         self.session.add_message(
             role=Role.ASSISTANT,
             content=full_response if full_response else "",
-            timestap=timestap,
+            timestamp=timestamp,
             tool_calls=tool_calls if tool_calls else None,
         )
 
