@@ -9,7 +9,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from session import Message, Role, Session
+from message import Message, Role, ToolCall, ToolCallFunction
+from session import Session
 from storage import FileStorage
 
 
@@ -50,7 +51,7 @@ class TestFileStorage(unittest.TestCase):
         session = Session("test-session-3")
         storage = FileStorage(session.session_id)
 
-        message = Message(role=Role.USER, content="Hello, World!")
+        message = Message(role=Role.USER, content="Hello, World!", timestamp=1700000000)
         storage.save(message)
 
         expected_file = f".sessions/{session.session_id}.json"
@@ -69,9 +70,15 @@ class TestFileStorage(unittest.TestCase):
         session = Session("test-session-4")
         storage = FileStorage(session.session_id)
 
-        message1 = Message(role=Role.USER, content="First message")
-        message2 = Message(role=Role.ASSISTANT, content="Second message")
-        message3 = Message(role=Role.SYSTEM, content="Third message")
+        message1 = Message(
+            role=Role.USER, content="First message", timestamp=1700000001
+        )
+        message2 = Message(
+            role=Role.ASSISTANT, content="Second message", timestamp=1700000002
+        )
+        message3 = Message(
+            role=Role.SYSTEM, content="Third message", timestamp=1700000003
+        )
 
         storage.save(message1)
         storage.save(message2)
@@ -90,7 +97,7 @@ class TestFileStorage(unittest.TestCase):
         session = Session("test-session-5")
         storage = FileStorage(session.session_id)
 
-        message = Message(role=Role.USER, content="Test message")
+        message = Message(role=Role.USER, content="Test message", timestamp=1700000000)
         storage.save(message)
 
         messages = list(storage.read())
@@ -106,9 +113,11 @@ class TestFileStorage(unittest.TestCase):
         session = Session("test-session-6")
         storage = FileStorage(session.session_id)
 
-        message1 = Message(role=Role.USER, content="Message 1")
-        message2 = Message(role=Role.ASSISTANT, content="Message 2")
-        message3 = Message(role=Role.TOOL, content="Message 3")
+        message1 = Message(role=Role.USER, content="Message 1", timestamp=1700000001)
+        message2 = Message(
+            role=Role.ASSISTANT, content="Message 2", timestamp=1700000002
+        )
+        message3 = Message(role=Role.TOOL, content="Message 3", timestamp=1700000003)
 
         storage.save(message1)
         storage.save(message2)
@@ -144,9 +153,11 @@ class TestFileStorage(unittest.TestCase):
 
         # Manually write with blank lines
         with open(f".sessions/{session.session_id}.json", "w", encoding="utf-8") as f:
-            f.write('{"role": "user", "content": "Test"}\n')
+            f.write('{"role": "user", "content": "Test", "timestamp": 1700000000}\n')
             f.write("\n")  # Blank line
-            f.write('{"role": "assistant", "content": "Response"}\n')
+            f.write(
+                '{"role": "assistant", "content": "Response", "timestamp": 1700000001}\n'
+            )
 
         # Reopen storage to read from beginning
         storage.file.close()
@@ -173,8 +184,6 @@ class TestFileStorage(unittest.TestCase):
 
     def test_message_with_tool_call(self):
         """Test saving and reading message with tool call"""
-        from session import ToolCall, ToolCallFunction
-
         session = Session("test-session-10")
         storage = FileStorage(session.session_id)
 
@@ -186,7 +195,10 @@ class TestFileStorage(unittest.TestCase):
             ),
         )
         message = Message(
-            role=Role.ASSISTANT, content="Using tool", tool_calls=[tool_call]
+            role=Role.ASSISTANT,
+            content="Using tool",
+            tool_calls=[tool_call],
+            timestamp=1700000000,
         )
 
         storage.save(message)
@@ -204,12 +216,12 @@ class TestFileStorage(unittest.TestCase):
         session = Session("test-session-11")
 
         storage1 = FileStorage(session.session_id)
-        message1 = Message(role=Role.USER, content="First")
+        message1 = Message(role=Role.USER, content="First", timestamp=1700000001)
         storage1.save(message1)
         storage1.close()
 
         storage2 = FileStorage(session.session_id)
-        message2 = Message(role=Role.USER, content="Second")
+        message2 = Message(role=Role.USER, content="Second", timestamp=1700000002)
         storage2.save(message2)
         storage2.close()
 
