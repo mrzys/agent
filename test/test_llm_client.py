@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 import sys
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -182,6 +183,87 @@ class TestLLMClientToolCallCollection(unittest.TestCase):
         client._collect_tool_calls(buffer, deltas)
 
         self.assertEqual(buffer, {})
+
+
+class MockDelta:
+    def __init__(self, content=None, tool_calls=None):
+        self.content = content
+        self.tool_calls = tool_calls
+
+
+class MockChoice:
+    def __init__(self, delta):
+        self.delta = delta
+
+
+class MockChunk:
+    def __init__(self, delta):
+        self.choices = [MockChoice(delta)]
+
+
+class MockStreamResponse:
+    def __init__(self, chunks, created=None):
+        self.chunks = chunks
+        self.created = created
+
+    def __iter__(self):
+        return iter(self.chunks)
+
+
+class TestLLMClientStream(unittest.TestCase):
+    def test_stream_returns_llm_response(self):
+        client = LLMClient(model="gpt-4")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        mock_chunk = MockChunk(MockDelta(content="Hi there!"))
+        mock_response = MockStreamResponse([mock_chunk], created=1234567890)
+
+        with mock.patch("llm_client.completion", return_value=mock_response):
+            result = client.stream(messages)
+
+        self.assertIsInstance(result, LLMResponse)
+        self.assertEqual(result.content, "Hi there!")
+        self.assertEqual(result.tool_calls, [])
+        self.assertEqual(result.created, 1234567890)
+
+    def test_stream_accumulates_content(self):
+        client = LLMClient(model="gpt-4")
+        messages = [{"role": "user", "content": "Hello"}]
+
+        chunks = [
+            MockChunk(MockDelta(content="Hello ")),
+            MockChunk(MockDelta(content="world")),
+            MockChunk(MockDelta(content="!")),
+        ]
+        mock_response = MockStreamResponse(chunks, created=9999999999)
+
+        with mock.patch("llm_client.completion", return_value=mock_response):
+            result = client.stream(messages)
+
+        self.assertEqual(result.content, "Hello world!")
+
+
+def test_stream_with_tool_calls(self):
+    client = LLMClient(model="gpt-4")
+    messages = [{"role": "user", "content": "What's the weather?"}]
+
+    mock_tool_call_delta = MockToolCallDelta(
+        index=0, id="call-123", name="get_weather", arguments='{"city": "Boston"}'
+    )
+    chunks = [
+        MockChunk(MockDelta(content="Let me check ")),
+        MockChunk(MockDelta(content="the weather.", tool_calls=[mock_tool_call_delta])),
+    ]
+    mock_response = MockStreamResponse(chunks, created=1111111111)
+
+    with mock.patch("llm_client.completion", return_value=mock_response):
+        result = client.stream(messages)
+
+    self.assertEqual(result.content, "Let me check the weather.")
+    self.assertEqual(len(result.tool_calls), 1)
+    self.assertEqual(result.tool_calls[0].id, "call-123")
+    self.assertEqual(result.tool_calls[0].name, "get_weather")
+    self.assertEqual(result.tool_calls[0].arguments, '{"city": "Boston"}')
 
 
 if __name__ == "__main__":

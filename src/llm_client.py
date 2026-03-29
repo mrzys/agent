@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from time import time
 from typing import Any, Dict, List
+
+from litellm import completion
 
 
 @dataclass
@@ -49,3 +52,27 @@ class LLMClient:
             )
             for idx in sorted(buffer.keys())
         ]
+
+    def stream(
+        self, messages: List[Dict[str, Any]], with_tools: bool = True
+    ) -> LLMResponse:
+        response = completion(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            tools=self.tools_schema if with_tools and self.tools_schema else None,
+        )
+
+        created = response.created or int(time())
+        content = ""
+        tool_calls_buffer: Dict[int, Dict[str, str]] = {}
+
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            content += delta.content or ""
+            if delta.tool_calls:
+                self._collect_tool_calls(tool_calls_buffer, delta.tool_calls)
+
+        tool_calls = self._build_tool_calls(tool_calls_buffer)
+
+        return LLMResponse(content=content, tool_calls=tool_calls, created=created)
