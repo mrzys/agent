@@ -1,9 +1,13 @@
 import json
+import logging
+import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from src.tool import Tool
 from src.llm_client import ToolCall
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,14 +48,10 @@ class ToolExecutor:
         tool = self._tools[tool_name]
         try:
             args = json.loads(arguments) if arguments else {}
-            result = tool.execute(**args)
-            return ToolResult(
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                success=True,
-                result=result,
-            )
         except json.JSONDecodeError as e:
+            logger.error(
+                f"Tool arguments parse failed - tool: {tool_name}, arguments: {arguments}, error: {e}"
+            )
             return ToolResult(
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
@@ -59,13 +59,25 @@ class ToolExecutor:
                 result=None,
                 error=f"Invalid JSON arguments: {e}",
             )
+
+        try:
+            result = tool.execute(**args)
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                success=True,
+                result=result,
+            )
         except Exception as e:
+            logger.error(
+                f"Tool execution failed - tool: {tool_name}, args: {args}, error: {type(e).__name__}: {e}\n{traceback.format_exc()}"
+            )
             return ToolResult(
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
                 success=False,
                 result=None,
-                error=str(e),
+                error=f"{type(e).__name__}: {e} (args: {args})",
             )
 
     def execute_batch(self, tool_calls: List[ToolCall]) -> List[ToolResult]:
